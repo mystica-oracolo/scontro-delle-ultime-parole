@@ -35,6 +35,28 @@ Ruzzle a tema: griglia 5x5, parole valide solo se appartengono alla categoria sc
 
 _(nessun blocco aperto al momento)_
 
+**Dizionario extra sostituito con dizionario italiano completo (luglio 2026):**
+- `js/dictionary-extra.js` non è più una lista scritta a mano (1797 parole) ma un dizionario italiano reale di **525.836 parole** (forme flesse incluse: plurali, coniugazioni verbali, ecc.), filtrato dal file fornito da te (`660000_parole_italiane.txt`, ~661.500 forme) tenendo solo A-Z maiuscole, lunghezza 3-12 (limiti del gioco), deduplicato
+- Formato cambiato per leggerezza: non più array di stringhe con virgolette ma un'unica stringa CSV, `.split(",")` all'uso — file passato da ~194 righe a **~5,3 MB** (dizionario reale, non c'è modo di comprimerlo molto di più restando testo leggibile; con gzip lato server, come fa GitHub Pages, il trasferimento reale è ~1,3 MB)
+- **Rifattorizzato `game.js` per le prestazioni**: con mezzo milione di parole, ricostruire un Trie da zero ad ogni round (come si faceva con le 1797 parole manuali) sarebbe stato troppo lento su mobile. Ora: `EXTRA_WORDS_SET` (un `Set`) è costruito **una sola volta** al caricamento del modulo, e in `startRound` il controllo parola-valida usa direttamente `Set.has()` (O(1)) invece di inserire tutto in un Trie ad ogni partita — nessun cambio di comportamento per chi gioca, solo di velocità
+- **Testato**: caricamento del dizionario + costruzione del Set ~250-300ms in Node (una tantum, al primo avvio dell'app); lookup di parole singole istantaneo; `node --check` ok su entrambi i file
+- Nota: essendo un dizionario reale con tutte le flessioni, ora in griglia possono comparire per caso moltissime più parole "extra" trovabili rispetto a prima (~21 medie con la lista manuale, molte di più ora) — nessuna di queste vale mai bonus ×3, solo punteggio normale, come da regola originale
+- Non fatto: nessuna deduplica esplicita tra questo dizionario e le parole di categoria (ci sono ~872 parole di categoria probabilmente già presenti anche qui) — non è un problema perché `classifyWord` controlla prima `categoryWordsSet`/`plantedSet`, quindi una parola di categoria continua a valere sempre come categoria/bonus, mai come "extra", indipendentemente da questa sovrapposizione
+
+**Punti tripli sulle bonus + vocabolario esteso (luglio 2026):**
+- `js/dictionary-extra.js` — vocabolario generico italiano (**1797 parole**, fuori tema), usato SOLO per validare parole trovate in gioco, non per piantare/generare la griglia né per la schermata risultati. Ampliato due volte su richiesta (648 → 1239 → 1797) dopo feedback "poche parole"
+- `js/game.js` `startRound`: il trie "di gioco" ora include anche **tutte le parole delle ALTRE categorie** (es. mentre giochi "Colori" valgono anche le parole di "Animali", "Sport", ecc., sempre a punteggio extra normale, mai bonus) — modo "gratuito" per ampliare ulteriormente il vocabolario senza doverlo scrivere a mano. Vocabolario extra effettivo per round ≈ 1797 + (872 − parole della categoria in corso) ≈ 2400-2650 parole, media **~21 parole extra trovabili per griglia** (era ~14 con solo il dizionario manuale, ~8 alla prima versione)
+- `js/game.js`: `startRound` ora costruisce due Trie — `categoryTrie` (solo categoria, usato per generare la griglia e per `allFindableWords`/schermata risultati) e `trie` "di gioco" (categoria + extra, usato da `submitSelection` per validare ciò che il giocatore seleziona)
+- Nuova funzione `classifyWord(word)`: distingue 3 casi —
+  - **categoria**: parola piantata intenzionalmente → punteggio normale (Ruzzle-style)
+  - **bonus**: parola della categoria presente per caso in griglia ma non piantata → punteggio **×3** (`BONUS_MULTIPLIER`)
+  - **extra**: parola del vocabolario generico, fuori tema → punteggio normale
+- `state.foundWords` è passato da `Map<parola, punti>` a `Map<parola, {points, type}>` — aggiornati `submitSelection`, `updateFoundList`, `renderResults`
+- Feedback visivo: flash dorato/corallo (`.cell.bonus`) sulle celle di una parola bonus trovata, tag "×3" o "extra" accanto alla parola in lista trovate e nei risultati (CSS in `style.css`: `.tag`, `.tag-bonus`, `.tag-extra`, `.cell.bonus`, `.word-bonus`)
+- Tagline home aggiornata per spiegare la nuova regola
+- **Testato**: simulazione di più round su categoria "Animali" — bonus trovate correttamente triplicate (es. RATTO 2pt→6pt, CROTALO 5pt→15pt); su "Colori" verificate parole extra aggiuntive trovabili (BERE, PANE, ESSERE, ecc.) non presenti nel vocabolario categoria
+- Nota: il vocabolario extra è compilato a mano (non da un dizionario di terzi), quindi andrebbe rivisto/ampliato ulteriormente da un madrelingua se si vuole coprire ancora più parole
+
 **Suoni (luglio 2026):**
 - `js/audio-manager.js` — classe `AudioManager` procedurale via Web Audio API (oscillatori sine/triangle/square/sawtooth), **nessun file audio esterno** da ospitare/caricare
 - Suoni implementati: parola trovata (arpeggio a due note, pitch scala con i punti), parola duplicata (click neutro), parola non valida (thud discendente), tick timer (ultimi 10s, più acuto/urgente negli ultimi 3s), fine round (sequenza discendente a 3 note)
