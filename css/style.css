@@ -230,6 +230,10 @@ button {
   transform: scale(1.05);
 }
 .cell.correct { background: var(--gold) !important; }
+.cell.bonus {
+  background: linear-gradient(135deg, var(--gold), var(--coral)) !important;
+  box-shadow: 0 0 0 2px var(--gold), 0 0 12px rgba(217,164,65,0.8) !important;
+}
 .cell.duplicate { background: #8a8a8a !important; }
 .cell.invalid { background: var(--coral) !important; }
 
@@ -275,6 +279,18 @@ button {
   gap: 6px;
 }
 #found-list li strong { color: var(--gold); }
+#found-list li.word-bonus { border-color: var(--gold); background: rgba(217,164,65,0.18); }
+#found-list li.word-extra { opacity: 0.85; }
+
+.tag {
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+.tag-bonus { background: var(--gold); color: var(--ink); }
+.tag-extra { background: rgba(243,236,218,0.2); color: var(--parchment-dim); }
 
 /* ---------- Risultati ---------- */
 
@@ -322,6 +338,7 @@ button {
   font-size: 0.85rem;
 }
 .results-list.found li strong { color: var(--gold); float: right; }
+.results-list.found li.word-bonus { border: 1px solid var(--gold); background: rgba(217,164,65,0.15); }
 .results-list .empty { opacity: 0.5; font-family: var(--font-body); }
 
 .results-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
