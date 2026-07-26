@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <radialGradient id="bg" cx="30%" cy="35%" r="85%">
+      <stop offset="0%" stop-color="#1a3327"/>
+      <stop offset="55%" stop-color="#12241c"/>
+      <stop offset="100%" stop-color="#0b1712"/>
+    </radialGradient>
+    <linearGradient id="trail" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1fae9a"/>
+      <stop offset="100%" stop-color="#e2593f"/>
+    </linearGradient>
+    <linearGradient id="tileBevel" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fbf7ec"/>
+      <stop offset="100%" stop-color="#e2d8bf"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- mini letter grid, right side -->
+  <g transform="translate(760,115)">
+    <path d="M 40 340 C 110 340, 120 230, 190 226 C 260 222, 270 120, 340 110"
+          fill="none" stroke="url(#trail)" stroke-width="18" stroke-linecap="round" opacity="0.9"/>
+    <circle cx="40" cy="340" r="14" fill="#1fae9a"/>
+    <circle cx="340" cy="110" r="14" fill="#e2593f"/>
+    <g font-family="Georgia, 'Times New Roman', serif" font-weight="700" font-size="58" text-anchor="middle">
+      <rect x="16" y="308" width="72" height="72" rx="16" fill="url(#tileBevel)"/>
+      <text x="52" y="360" fill="#12241c">C</text>
+      <rect x="150" y="196" width="72" height="72" rx="16" fill="url(#tileBevel)"/>
+      <text x="186" y="248" fill="#12241c">A</text>
+      <rect x="230" y="150" width="72" height="72" rx="16" fill="url(#tileBevel)"/>
+      <text x="266" y="202" fill="#12241c">T</text>
+      <rect x="304" y="76" width="72" height="72" rx="16" fill="url(#tileBevel)"/>
+      <text x="340" y="128" fill="#12241c">O</text>
+    </g>
+  </g>
+
+  <!-- title block, left side -->
+  <text x="90" y="235" font-family="Fraunces, Georgia, serif" font-weight="700" font-size="60" fill="#f3ecda">Scontro delle</text>
+  <text x="90" y="300" font-family="Fraunces, Georgia, serif" font-weight="700" font-size="60" fill="#f3ecda">Ultime Parole</text>
+  <text x="90" y="345" font-family="'Work Sans', Arial, sans-serif" font-size="30" fill="#d9a441">Ruzzle a tema</text>
+  <text x="90" y="390" font-family="'Work Sans', Arial, sans-serif" font-size="26" fill="#e2d8bf">Trova le parole della categoria giusta:</text>
+  <text x="90" y="428" font-family="'Work Sans', Arial, sans-serif" font-size="26" fill="#e2d8bf">Animali · Città · Professioni · Sport · Colori...</text>
+</svg>

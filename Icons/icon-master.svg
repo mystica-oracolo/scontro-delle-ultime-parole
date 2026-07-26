@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="42%" r="75%">
+      <stop offset="0%" stop-color="#1a3327"/>
+      <stop offset="55%" stop-color="#12241c"/>
+      <stop offset="100%" stop-color="#0b1712"/>
+    </radialGradient>
+    <linearGradient id="trail" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1fae9a"/>
+      <stop offset="100%" stop-color="#e2593f"/>
+    </linearGradient>
+    <linearGradient id="tileBevel" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fbf7ec"/>
+      <stop offset="100%" stop-color="#e2d8bf"/>
+    </linearGradient>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#0b1712" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+
+  <!-- background -->
+  <rect x="0" y="0" width="512" height="512" fill="url(#bg)"/>
+
+  <!-- drag trail behind the tile -->
+  <path d="M 108 372 C 180 372, 190 260, 256 256 C 322 252, 332 150, 404 140"
+        fill="none" stroke="url(#trail)" stroke-width="26" stroke-linecap="round" opacity="0.9"/>
+  <circle cx="108" cy="372" r="20" fill="#1fae9a"/>
+  <circle cx="404" cy="140" r="20" fill="#e2593f"/>
+
+  <!-- central tile -->
+  <g filter="url(#soft)">
+    <rect x="152" y="152" width="208" height="208" rx="36" fill="url(#tileBevel)"/>
+    <rect x="152" y="152" width="208" height="208" rx="36" fill="none" stroke="#d9a441" stroke-width="4" opacity="0.6"/>
+  </g>
+
+  <!-- letter -->
+  <text x="256" y="296" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif"
+        font-weight="700" font-size="150" fill="#12241c">C</text>
+
+  <!-- small gold accent dot, echoes found-word highlight -->
+  <circle cx="256" cy="256" r="4" fill="#d9a441" opacity="0"/>
+</svg>
