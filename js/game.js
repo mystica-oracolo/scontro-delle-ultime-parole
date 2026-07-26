@@ -3,6 +3,20 @@ import { CATEGORIES } from "./categories/index.js";
 import { generateGrid } from "./grid-generator.js";
 import { areAdjacent, findAllWords, scoreForWord } from "./path-finder.js";
 import audio from "./audio-manager.js";
+import EXTRA_WORDS from "./dictionary-extra.js";
+
+// Il vocabolario extra ora e' un dizionario italiano completo (~526.000
+// forme flesse). Costruire un Trie da zero con tutte queste parole ad ogni
+// round sarebbe troppo lento su mobile, quindi lo trasformiamo in un Set
+// UNA SOLA VOLTA al caricamento del modulo: il controllo isWord() su un Set
+// e' O(1) e non richiede prefissi (il trie serve solo per generare la
+// griglia/trovare le parole di categoria, non per il vocabolario extra).
+const EXTRA_WORDS_SET = new Set(EXTRA_WORDS);
+
+// Moltiplicatore per le parole "bonus" della categoria: quelle NON piantate
+// intenzionalmente ma comunque presenti nel vocabolario della categoria
+// scelta, formatesi per caso nel riempimento della griglia.
+const BONUS_MULTIPLIER = 3;
 
 const TICK_START_SECONDS = 10; // da quando iniziano i tick del timer
 const TICK_URGENT_SECONDS = 3; // da quando i tick diventano più acuti/urgenti
@@ -29,11 +43,13 @@ let state = {
   screen: "category-select",
   difficulty: loadDifficulty(),
   category: null,
-  trie: null,
+  trie: null, // trie "di gioco": categoria + vocabolario extra, usato per validare le parole
+  categoryWordsSet: null, // Set delle parole della categoria (piantate + bonus)
+  plantedSet: null, // Set delle parole effettivamente piantate in griglia
   grid: null,
   plantedWords: [],
-  allFindableWords: null, // Map parola -> path, calcolato a inizio round
-  foundWords: new Map(), // parola -> punti
+  allFindableWords: null, // Map parola -> path (solo categoria), calcolato a inizio round
+  foundWords: new Map(), // parola -> { points, type: "categoria" | "bonus" | "extra" }
   score: 0,
   roundSeconds: DIFFICULTIES[loadDifficulty()].seconds,
   timeLeft: DIFFICULTIES[loadDifficulty()].seconds,
@@ -55,7 +71,7 @@ function renderCategorySelect() {
     <header class="brand">
       ${renderSoundToggle()}
       <h1>Scontro delle Ultime Parole</h1>
-      <p class="tagline">Trova parole in griglia. Ma solo della categoria giusta.</p>
+      <p class="tagline">Trova le parole della categoria — le bonus valgono ×${BONUS_MULTIPLIER}! Vanno bene anche altre parole italiane.</p>
     </header>
 
     <div class="difficulty-select" role="group" aria-label="Difficoltà">
@@ -121,17 +137,43 @@ function attachSoundToggle() {
 function startRound(categoryId) {
   const diff = DIFFICULTIES[state.difficulty];
   const category = CATEGORIES.find((c) => c.id === categoryId);
-  const trie = new Trie();
-  category.words.forEach((w) => trie.insert(w));
+
+  // Trie della sola categoria: usato per generare la griglia e per la
+  // schermata risultati (rivela solo le parole in tema, non tutto il
+  // vocabolario extra).
+  const categoryTrie = new Trie();
+  category.words.forEach((w) => categoryTrie.insert(w));
+
+  // "Trie" di gioco: categoria + vocabolario extra + parole delle ALTRE
+  // categorie (es. mentre giochi "Colori" contano anche le parole di
+  // "Animali", "Sport", ecc.) — così il vocabolario disponibile è molto
+  // più ampio di quello della sola categoria scelta. Qui serve solo
+  // isWord() (mai hasPrefix), quindi usiamo Set invece di un vero Trie:
+  // con ~526.000 parole extra è molto più leggero da ricostruire ad ogni
+  // round (l'unico pezzo pesante, EXTRA_WORDS_SET, è già pronto una volta
+  // sola a livello di modulo).
+  const categoryWordsSet = new Set(category.words);
+  const otherCategoriesSet = new Set();
+  CATEGORIES.forEach((c) => {
+    if (c.id !== category.id) c.words.forEach((w) => otherCategoriesSet.add(w));
+  });
+  const trie = {
+    isWord: (w) =>
+      categoryWordsSet.has(w) ||
+      otherCategoriesSet.has(w) ||
+      EXTRA_WORDS_SET.has(w),
+  };
 
   const { grid, plantedWords } = generateGrid(category, diff.size, diff.wordsToPlant);
-  const allFindableWords = findAllWords(grid, trie, diff.size, diff.size + 3);
+  const allFindableWords = findAllWords(grid, categoryTrie, diff.size, diff.size + 3);
 
   state = {
     ...state,
     screen: "playing",
     category,
     trie,
+    categoryWordsSet,
+    plantedSet: new Set(plantedWords.map((p) => p.word)),
     grid,
     gridSize: diff.size,
     plantedWords,
@@ -146,6 +188,21 @@ function startRound(categoryId) {
 
   render();
   startTimer();
+}
+
+/**
+ * Classifica una parola valida trovata dal giocatore e ne calcola il punteggio.
+ * - "categoria": una delle parole piantate intenzionalmente -> punteggio normale
+ * - "bonus": parola della categoria presente per caso ma non piantata -> punteggio triplo
+ * - "extra": parola del vocabolario generale, fuori tema -> punteggio normale
+ */
+function classifyWord(word) {
+  const base = scoreForWord(word);
+  if (state.categoryWordsSet.has(word)) {
+    if (state.plantedSet.has(word)) return { points: base, type: "categoria" };
+    return { points: base * BONUS_MULTIPLIER, type: "bonus" };
+  }
+  return { points: base, type: "extra" };
 }
 
 function startTimer() {
@@ -318,11 +375,11 @@ function submitSelection() {
   const isNew = isValid && !state.foundWords.has(word);
 
   if (isNew) {
-    const points = scoreForWord(word);
-    state.foundWords.set(word, points);
+    const { points, type } = classifyWord(word);
+    state.foundWords.set(word, { points, type });
     state.score += points;
     audio.playFound(points);
-    flashCells(cellsEls, "correct");
+    flashCells(cellsEls, type === "bonus" ? "bonus" : "correct");
     updateFoundList();
     document.getElementById("score-value").textContent = state.score;
   } else if (isValid && !isNew) {
@@ -346,11 +403,20 @@ function flashCells(cellsEls, className) {
   setTimeout(() => cellsEls.forEach((el) => el.classList.remove(className)), 400);
 }
 
+function wordBadge(type) {
+  if (type === "bonus") return ` <span class="tag tag-bonus">×${BONUS_MULTIPLIER}</span>`;
+  if (type === "extra") return ` <span class="tag tag-extra">extra</span>`;
+  return "";
+}
+
 function updateFoundList() {
   const list = document.getElementById("found-list");
-  const words = [...state.foundWords.entries()].sort((a, b) => b[1] - a[1]);
+  const words = [...state.foundWords.entries()].sort((a, b) => b[1].points - a[1].points);
   list.innerHTML = words
-    .map(([w, pts]) => `<li><span>${w}</span><strong>+${pts}</strong></li>`)
+    .map(
+      ([w, { points, type }]) =>
+        `<li class="word-${type}"><span>${w}${wordBadge(type)}</span><strong>+${points}</strong></li>`
+    )
     .join("");
   document.getElementById("found-count").textContent = words.length;
 }
@@ -374,7 +440,10 @@ function renderResults() {
           <h2>Trovate (${foundWords.size})</h2>
           <ul class="results-list found">
             ${[...foundWords.entries()]
-              .map(([w, pts]) => `<li>${w} <strong>+${pts}</strong></li>`)
+              .map(
+                ([w, { points, type }]) =>
+                  `<li class="word-${type}">${w}${wordBadge(type)} <strong>+${points}</strong></li>`
+              )
               .join("") || "<li class='empty'>Nessuna parola trovata</li>"}
           </ul>
         </div>
