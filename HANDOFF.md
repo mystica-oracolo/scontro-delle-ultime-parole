@@ -35,6 +35,31 @@ Ruzzle a tema: griglia 5x5, parole valide solo se appartengono alla categoria sc
 
 _(nessun blocco aperto al momento)_
 
+**Due nuove categorie (luglio 2026):**
+- **Corpo Umano** 🧍 — 99 parole (`js/categories/corpo-umano.js`)
+- **Mezzi di Trasporto** 🚗 — 64 parole (`js/categories/mezzi-trasporto.js`)
+- Totale ora **1035 parole su 9 categorie** (era 872 su 7)
+- **Validazione**: ogni parola candidata controllata a script contro il dizionario italiano completo (`dictionary-extra.js`, 525.836 forme) — ha beccato 1 duplicato (MENTO in Corpo Umano) e 1 parola non presente nel dizionario (MINIBUS, rimossa per sicurezza); ho anche trovato e tolto a mano un errore semantico mio (MURETTO era finito per sbaglio tra i mezzi di trasporto — la validazione sul dizionario non lo becca perché "muretto" è comunque una parola italiana valida, solo non è un mezzo di trasporto)
+- **Testato**: generazione griglia su entrambe le nuove categorie × 3 difficoltà, 0 errori, piazzamento parole in linea con le altre categorie (~5-10 su 6-10 target a seconda della difficoltà)
+- `README.md` aggiornato con la tabella parole/categoria e i riferimenti a timer/target ormai variabili per difficoltà (erano rimasti al vecchio 90s/8 parole fisso)
+- Nota: essendo liste compilate da me come le altre 7, valgono le stesse avvertenze — andrebbero riviste da un madrelingua prima del lancio
+
+**Animazione feedback più ricca su parola trovata (luglio 2026):**
+- Popup "+N punti" (o "×3 +N" per le bonus, colore diverso per bonus/extra/categoria) che sale e sfuma sopra le celle della parola appena trovata, posizionato dinamicamente sulla media delle coordinate delle celle selezionate
+- Le celle della parola trovata ora fanno un piccolo "pop" (scala + lieve rotazione) oltre al flash colore già presente, per un feedback più tattile
+- Il punteggio in header pulsa (scala su e giù) ad ogni parola trovata, non solo si aggiorna staticamente
+- La parola appena aggiunta alla lista "Trovate" entra con una piccola animazione di comparsa invece di apparire di scatto nel refresh della lista
+- **Testato**: `node --check` ok su `game.js`, graffe CSS bilanciate (91/91) in `style.css`; logica del popup verificata a mano (calcolo posizione da `getBoundingClientRect`, rimozione sia via `animationend` sia via timeout di sicurezza a 1200ms per evitare popup "fantasma" se l'evento non scatta)
+
+**README + punteggio persistente + priorità parole corte su Facile (luglio 2026):**
+- `README.md`: titolo aggiornato da "Categorix" a "Scontro delle Ultime Parole", descrizione aggiornata (difficoltà 4x4/5x5/6x6, dizionario extra, vocabolario esteso)
+- **Storico partite persistente** (`localStorage`, chiave `scontro_history`, max 50 partite, più recenti in cima): ogni partita conclusa (`endRound`) salva categoria, difficoltà, punteggio, parole trovate. Home page mostra ora: partite giocate totali, miglior punteggio assoluto, e le ultime 5 partite in una mini-lista (categoria/difficoltà/punti)
+- **Record per categoria+difficoltà**: a fine round si confronta il punteggio con il migliore già registrato per quella combinazione categoria/difficoltà (non un unico record globale) — schermata risultati mostra "🏆 Nuovo record!" oppure il record attuale. Il confronto avviene PRIMA di salvare la partita corrente nello storico, altrimenti una partita "batterebbe" sempre se stessa
+- **Facile (4×4) pianta più parole**: `grid-generator.js` ora, solo su griglie ≤4×4, prova prima le parole più corte della categoria (a parità di lunghezza l'ordine resta casuale) — su Professioni la media è passata da ~2/6 a ~3,9/6 parole piantate; verificato che le altre difficoltà/categorie non hanno subito regressioni (test su tutte le 7 categorie × 3 difficoltà, 0 errori)
+- **Testato**: sintassi `node --check` ok su `game.js`/`grid-generator.js`; logica storico/record testata con `localStorage` fittizio (rilevamento nuovo record, record separati per categoria+difficoltà, cap a 50 partite, ordine più-recente-in-cima) — tutti i casi passano
+- Non fatto: nessuna UI per "azzerare lo storico" — se un giorno serve, basta aggiungere un pulsante che chiama `localStorage.removeItem("scontro_history")`
+- Non fatto: animazione feedback più ricca su parola trovata (resta solo il flash colore tessera) — se vuoi la aggiungo in un prossimo giro
+
 **Dizionario extra sostituito con dizionario italiano completo (luglio 2026):**
 - `js/dictionary-extra.js` non è più una lista scritta a mano (1797 parole) ma un dizionario italiano reale di **525.836 parole** (forme flesse incluse: plurali, coniugazioni verbali, ecc.), filtrato dal file fornito da te (`660000_parole_italiane.txt`, ~661.500 forme) tenendo solo A-Z maiuscole, lunghezza 3-12 (limiti del gioco), deduplicato
 - Formato cambiato per leggerezza: non più array di stringhe con virgolette ma un'unica stringa CSV, `.split(",")` all'uso — file passato da ~194 righe a **~5,3 MB** (dizionario reale, non c'è modo di comprimerlo molto di più restando testo leggibile; con gzip lato server, come fa GitHub Pages, il trasferimento reale è ~1,3 MB)
@@ -72,31 +97,48 @@ _(nessun blocco aperto al momento)_
 - Badge difficoltà aggiunto nell'header di gioco accanto alla categoria
 - **Testato**: generazione griglia su tutte le 7 categorie × 3 difficoltà (21 combinazioni), 0 errori, 0-1ms di generazione. Nota: su **Facile (4×4) con Professioni** si piantano solo 2 parole su 6 target (parole della categoria mediamente più lunghe di quelle che entrano in una griglia così piccola) — resta giocabile ma è la combinazione più "povera"; se vuoi la miglioriamo filtrando parole più corte quando la difficoltà è facile
 
+**Verifica dizionario su tutte le 9 categorie + Multiplayer "Sfida un amico" + AdSense (luglio 2026):**
+- **Verifica dizionario completa**: script Node ad-hoc che confronta tutte le 1035 parole delle 9 categorie contro `dictionary-extra.js` (525.836 forme), controllando anche duplicati interni. Trovati e corretti 2 problemi reali: `BEROE` in Animali (genere scientifico oscuro di ctenoforo, non un animale riconoscibile) → sostituito con `SPIGOLA`; `SEDANORAPA` in Frutta & Verdura (composto non standard, e "sedano" era già presente da solo nella lista) → sostituito con `PORCINO`. Le altre "mancanze" segnalate dallo script (nomi propri in Città/Nazioni, `ALBATROS`/`SURICATO` come varianti valide, `ARCIERIA`, termini sportivi stranieri come `PADEL`/`FUTSAL`/`CROSSFIT`) sono falsi positivi verificati uno per uno: sono parole corrette, solo assenti dal dizionario generico perché nomi propri o termini rari/stranieri. Zero duplicati residui.
+- **Multiplayer "Sfida un amico" (1v1 in tempo reale), implementato per intero:**
+  - `js/grid-generator.js`: aggiunta `createSeededRng(seed)` (mulberry32) e parametro `rng` opzionale su `generateGrid`/`placeWord`/`shuffle`/`randomLetter` — con lo stesso seed due dispositivi generano *esattamente* la stessa griglia senza doverla trasmettere. Comportamento in singolo giocatore invariato (continua a usare `Math.random()`). Testato: stesso seed → griglia identica, seed diverso → griglia diversa.
+  - `js/firebase-config.js` (nuovo): config Firebase con placeholder e istruzioni passo-passo nei commenti (può riusare lo stesso progetto Firebase di mysticaoracoli, basta aggiungere Firestore con le regole indicate nel file). Finché non viene compilata, `isFirebaseConfigured` è `false` e tutto il flusso multiplayer mostra un messaggio gentile invece di tentare connessioni o andare in errore.
+  - `js/multiplayer.js` (nuovo): stanze duello su Firestore (collezione `duels`, un documento per stanza, codice a 5 caratteri). `createDuel`/`joinDuel`/`listenToDuel`/`updateMyProgress`/`finishMyRound`/`abandonDuel`. Nessuna autenticazione (gioco casual, uid locale generato e salvato in `localStorage`).
+  - `js/game.js`: 3 nuove schermate — `duel-setup` (categoria+difficoltà, poi crea stanza), `duel-join` (inserimento codice a 5 caratteri, con campo nome facoltativo), `duel-lobby` (mostra codice/link da condividere, countdown condiviso 3-2-1 quando il secondo giocatore entra, calcolato da un `startAt` scritto su Firestore così i due dispositivi partono insieme). Durante il round, pillola "avversario" nell'header con punteggio live (aggiornato via `onSnapshot` senza ridisegnare tutta la griglia, per non rompere il drag in corso). A fine round, `endRound` invia il punteggio finale e la schermata risultati mostra un banner con entrambi i punteggi affiancati e il verdetto (vinto/perso/pareggio), aggiornato in tempo reale se l'avversario finisce dopo di te.
+  - Link di invito diretto: il pulsante "Copia link" genera un URL `?duel=CODICE` che, se aperto, porta dritto alla schermata di join col codice precompilato.
+  - **Testato** (senza un vero progetto Firebase collegato, quindi senza poter verificare la sincronizzazione reale a due dispositivi): `node --check` ok su tutti i nuovi file; test con Playwright headless — home, avvio partita singola, schermata "Sfida un amico" e schermata "Ho un codice" caricano senza errori JS e mostrano correttamente il messaggio "multiplayer non configurato" (comportamento atteso finché non viene collegato un progetto Firebase reale); nessun `pageerror` in nessuno dei flussi testati.
+  - **Da fare tu per attivarlo davvero**: segui le istruzioni in `js/firebase-config.js` (5 minuti, puoi riusare il progetto Firebase di mysticaoracoli) e poi testa un duello reale tra due dispositivi/tab — questa parte non ho potuto verificarla end-to-end perché il sandbox in cui lavoro non ha accesso alla rete esterna.
+- **AdSense, pronto ma disattivato finché non inserisci i tuoi ID:**
+  - `js/game.js`: costanti `ADSENSE_CLIENT`/`ADSENSE_SLOTS` in cima al file — finché `ADSENSE_CLIENT` contiene ancora `XXXX` nessuno script viene caricato e nessun riquadro pubblicitario viene mostrato (verificato: 0 elementi `.ad-slot` nel DOM quando disattivato).
+  - Due posizionamenti "gentili": home (sotto ai pulsanti sfida) e schermata risultati (in fondo, dopo le azioni) — **mai durante il round di gioco vero e proprio**, per non interrompere l'esperienza.
+  - `ads.txt` aggiunto nella root (placeholder commentato, va scommentato col tuo publisher ID reale) e meta tag `google-adsense-account` commentato in `index.html`.
+- Non fatto: nessun test con un vero account AdSense collegato (richiede il tuo publisher ID reale, non posso generarlo).
+
 ## Cosa manca / prossimi passi
 
 **Prima di andare live:**
 - [ ] Test reale su mobile (il drag è testato solo in logica, non su device touch reali — verificare sensibilità/hit-area delle celle su schermi piccoli, specialmente sulla griglia 6x6 di Difficile)
-- [ ] Verificare che tutte le 872 parole siano corrette/senza errori — le liste sono compilate da me, andrebbero riviste da un madrelingua prima del lancio (soprattutto Nazioni/Città meno comuni)
+- [x] Verificare che tutte le 1035 parole (9 categorie) siano corrette — vedi audit completo sopra, corretti i 2 errori reali trovati
+- [ ] Collegare un progetto Firebase reale a `js/firebase-config.js` e testare un duello vero tra due dispositivi (vedi sopra)
+- [ ] Inserire il publisher ID AdSense reale in `js/game.js` (`ADSENSE_CLIENT`/`ADSENSE_SLOTS`) e in `ads.txt` quando l'account è pronto
 
 **Miglioramenti gameplay:**
 - [x] Livelli di difficoltà (griglia 4x4/5x5/6x6, timer variabile) — vedi sopra
-- [ ] Punteggio persistente / storico partite (localStorage, come fatto per mysticaoracoli)
+- [x] Punteggio persistente / storico partite (localStorage, come fatto per mysticaoracoli) — vedi sopra
 - [x] Suoni (trovata parola, tick timer, fine round) — implementati proceduralmente, vedi sopra
-- [ ] Animazione feedback più ricca su parola trovata (al momento solo flash colore tessera)
-- [ ] Categorie extra: potenziale AdSense-friendly se lo rendi un sito standalone con più contenuto (regole, curiosità per categoria, ecc.)
-- [ ] (Opzionale) Su Facile, dare priorità a parole più corte nel pool candidate per piantarne di più
+- [x] Animazione feedback più ricca su parola trovata — popup punteggio, cell-pop, pulse punteggio, entrata animata in lista, vedi sopra
+- [x] Categorie extra: aggiunte Corpo Umano e Mezzi di Trasporto (9 categorie totali) — vedi sopra. Il lato "sito standalone AdSense-friendly con più contenuto" resta da valutare a parte, vedi sezione Monetizzazione
+- [x] Su Facile, priorità a parole più corte nel pool candidate per piantarne di più — vedi sopra
+- [x] Multiplayer "Sfida un amico" — implementato per intero (Firestore, griglia condivisa via seed, punteggi live, countdown sincronizzato), manca solo che tu colleghi un progetto Firebase reale — vedi sopra
 
-**Non fatto per scelta (da tua richiesta):**
-- Multiplayer/backend — resta single-player, nessun server. Se lo vuoi in futuro serve Firebase/Supabase per sync griglia in tempo reale tra 2 giocatori (hai già Firestore su mysticaoracoli, potresti riusarlo)
-
-**Monetizzazione (se rilevante):**
-- [ ] Se pubblichi su dominio proprio: AdSense come gli altri progetti, o Stripe per skin/categorie premium
-- [ ] Se resta un side-tool: nessuna azione necessaria
+**Monetizzazione:**
+- [x] AdSense integrato e pronto (script caricato dinamicamente solo se configurato, 2 slot non intrusivi su home e risultati, mai durante il round) — manca solo il tuo publisher ID reale, vedi sopra
+- [ ] Se vuoi anche skin/categorie premium: Stripe, sullo stesso schema già usato su mysticaoracoli
 
 **Piccola cosa rimasta indietro:**
-- [ ] `README.md` nel repo mostra ancora "Categorix" come titolo — solo cosmetico, non impatta il funzionamento
+
+_(nessuna al momento)_
 
 ## File di riferimento
-- Zip più recente consegnato: `scontro-delle-ultime-parole.zip` — progetto completo con rebranding, favicon/PWA/OG e suoni procedurali
+- Zip più recente consegnato: `scontro-delle-ultime-parole.zip` — progetto completo con rebranding, favicon/PWA/OG, suoni procedurali, multiplayer "Sfida un amico" e AdSense pronto (da configurare)
 - `README.md` (dentro lo zip) — istruzioni deploy + come estendere categorie (titolo da aggiornare)
 

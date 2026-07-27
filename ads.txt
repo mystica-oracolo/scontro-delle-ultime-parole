@@ -1,0 +1,10 @@
+# File richiesto da Google AdSense per la verifica anti-frode (IAB ads.txt).
+# Deve stare nella ROOT del sito pubblicato, es.:
+#   https://mystica-oracolo.github.io/scontro-delle-ultime-parole/ads.txt
+#
+# Chiara: sostituisci pub-XXXXXXXXXXXXXXXX con il tuo publisher ID reale
+# (lo trovi in AdSense → Account → Informazioni account, formato
+# "pub-1234567890123456", SENZA il prefisso "ca-" che invece si usa nello
+# script della pagina). Poi decommenta la riga.
+#
+# google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0
