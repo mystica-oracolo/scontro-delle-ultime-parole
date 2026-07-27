@@ -5,6 +5,8 @@ import fruttaVerdura from "./frutta-verdura.js";
 import sport from "./sport.js";
 import colori from "./colori.js";
 import nazioni from "./nazioni.js";
+import corpoUmano from "./corpo-umano.js";
+import mezziTrasporto from "./mezzi-trasporto.js";
 
 // Ogni categoria ha: id, etichetta, icona (emoji, sostituibile con SVG),
 // e la lista di parole valide (maiuscole, senza accenti/spazi/apostrofi).
@@ -16,6 +18,8 @@ export const CATEGORIES = [
   { id: "sport", label: "Sport", icon: "🏆", words: sport },
   { id: "colori", label: "Colori", icon: "🎨", words: colori },
   { id: "nazioni", label: "Nazioni", icon: "🌍", words: nazioni },
+  { id: "corpo-umano", label: "Corpo Umano", icon: "🧍", words: corpoUmano },
+  { id: "mezzi-trasporto", label: "Mezzi di Trasporto", icon: "🚗", words: mezziTrasporto },
 ];
 
 export function getCategoryById(id) {
