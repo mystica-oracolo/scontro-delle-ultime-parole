@@ -27,6 +27,11 @@ const DIFFICULTY_KEY = "scontro_difficulty";
 const HISTORY_KEY = "scontro_history";
 const HISTORY_MAX = 50; // partite conservate
 const WORD_STATS_KEY = "scontro_word_records"; // record assoluti (tutte le categorie/difficoltà)
+const CATEGORY_BG_BASE = "img/backgrounds/"; // foto a tema per categoria (card + sfondo di gioco)
+
+function categoryBgStyle(categoryId) {
+  return `background-image: url('${CATEGORY_BG_BASE}${categoryId}.jpg')`;
+}
 
 const DIFFICULTIES = {
   facile: { size: 4, seconds: 75, wordsToPlant: 6, label: "Facile" },
@@ -211,6 +216,7 @@ let state = {
 };
 
 function render() {
+  updateScreenBackground();
   if (state.screen === "category-select") renderCategorySelect();
   else if (state.screen === "playing") renderGame();
   else if (state.screen === "results") renderResults();
@@ -218,6 +224,20 @@ function render() {
   else if (state.screen === "duel-join") renderDuelJoin();
   else if (state.screen === "duel-lobby") renderDuelLobby();
   pushAds();
+}
+
+// Durante la partita e nella schermata risultati, lo sfondo della pagina
+// diventa la foto a tema della categoria in corso (vedi img/backgrounds/ e
+// .category-card::before/body.has-bg-photo in style.css) invece del
+// gradiente scuro generico. Altrove (home, sfida, ecc.) resta il gradiente.
+function updateScreenBackground() {
+  const showPhoto = (state.screen === "playing" || state.screen === "results") && state.category;
+  if (showPhoto) {
+    document.body.style.setProperty("--bg-photo", `url('${CATEGORY_BG_BASE}${state.category.id}.jpg')`);
+    document.body.classList.add("has-bg-photo");
+  } else {
+    document.body.classList.remove("has-bg-photo");
+  }
 }
 
 // ---------- Schermata selezione categoria ----------
@@ -265,7 +285,7 @@ function renderCategorySelect() {
     <div class="category-grid">
       ${CATEGORIES.map(
         (c) => `
-        <button class="category-card" data-id="${c.id}">
+        <button class="category-card" data-id="${c.id}" style="${categoryBgStyle(c.id)}">
           <span class="category-icon">${c.icon}</span>
           <span class="category-label">${c.label}</span>
         </button>`
@@ -1291,7 +1311,7 @@ function renderDuelSetup() {
     <div class="category-grid">
       ${CATEGORIES.map(
         (c) => `
-        <button class="category-card" data-id="${c.id}" ${state.duelSetupCreating ? "disabled" : ""}>
+        <button class="category-card" data-id="${c.id}" style="${categoryBgStyle(c.id)}" ${state.duelSetupCreating ? "disabled" : ""}>
           <span class="category-icon">${c.icon}</span>
           <span class="category-label">${c.label}</span>
         </button>`
