@@ -22,9 +22,11 @@ const BONUS_MULTIPLIER = 3;
 
 const TICK_START_SECONDS = 10; // da quando iniziano i tick del timer
 const TICK_URGENT_SECONDS = 3; // da quando i tick diventano più acuti/urgenti
+const COMBO_WINDOW_MS = 4000; // finestra entro cui due parole trovate contano come "combo"
 const DIFFICULTY_KEY = "scontro_difficulty";
 const HISTORY_KEY = "scontro_history";
 const HISTORY_MAX = 50; // partite conservate
+const WORD_STATS_KEY = "scontro_word_records"; // record assoluti (tutte le categorie/difficoltà)
 
 const DIFFICULTIES = {
   facile: { size: 4, seconds: 75, wordsToPlant: 6, label: "Facile" },
@@ -66,6 +68,45 @@ function saveRoundToHistory(entry) {
   const history = loadHistory();
   history.unshift(entry); // più recenti in cima
   localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, HISTORY_MAX)));
+}
+
+// ---------- Record "parola migliore" / "parola più lunga" (assoluti, come
+// nella schermata di recap di Ruzzle) ----------
+
+function loadWordRecords() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(WORD_STATS_KEY) || "{}");
+    return {
+      bestWord: raw.bestWord || null, // { word, points }
+      longestWord: raw.longestWord || null, // { word, length }
+    };
+  } catch {
+    return { bestWord: null, longestWord: null };
+  }
+}
+
+// Confronta la migliore/più lunga parola di QUESTO round coi record salvati,
+// aggiorna il localStorage se serve, e ritorna entrambi i valori (nuovi e
+// precedenti) così la schermata risultati può mostrare "NUOVO RECORD!" solo
+// quando è vero.
+function updateWordRecords(bestWordThisRound, longestWordThisRound) {
+  const current = loadWordRecords();
+  const prevBest = current.bestWord;
+  const prevLongest = current.longestWord;
+
+  const isNewBest = !!bestWordThisRound && (!prevBest || bestWordThisRound.points > prevBest.points);
+  const isNewLongest =
+    !!longestWordThisRound && (!prevLongest || longestWordThisRound.word.length > prevLongest.length);
+
+  const next = {
+    bestWord: isNewBest ? bestWordThisRound : prevBest,
+    longestWord: isNewLongest
+      ? { word: longestWordThisRound.word, length: longestWordThisRound.word.length }
+      : prevLongest,
+  };
+  localStorage.setItem(WORD_STATS_KEY, JSON.stringify(next));
+
+  return { prevBest, prevLongest, isNewBest, isNewLongest };
 }
 
 function getGlobalStats() {
@@ -334,6 +375,10 @@ function buildRoundFields(category, diff, rng = Math.random) {
     foundWords: new Map(),
     lastFoundWord: null,
     score: 0,
+    attemptsTotal: 0, // tentativi con selezione >=3 lettere, per la stat "Precisione"
+    attemptsValid: 0, // di cui parole realmente valide (nuove o già trovate)
+    comboCount: 0, // parole nuove trovate consecutivamente entro COMBO_WINDOW_MS
+    lastFoundAt: null,
     roundSeconds: diff.seconds,
     timeLeft: diff.seconds,
     selection: [],
@@ -408,6 +453,27 @@ function endRound() {
     score,
     wordsFound: state.foundWords.size,
   });
+
+  // Parola migliore/più lunga di questo round (per la mini-anteprima griglia
+  // e le due statistiche in stile Ruzzle nella schermata risultati).
+  let bestWordThisRound = null;
+  let longestWordThisRound = null;
+  for (const [word, info] of state.foundWords) {
+    if (!bestWordThisRound || info.points > bestWordThisRound.points) {
+      bestWordThisRound = { word, points: info.points, path: info.path };
+    }
+    if (!longestWordThisRound || word.length > longestWordThisRound.word.length) {
+      longestWordThisRound = { word, path: info.path };
+    }
+  }
+  const wordRecords = updateWordRecords(bestWordThisRound, longestWordThisRound);
+
+  state.roundStats = {
+    precision: state.attemptsTotal > 0 ? Math.round((state.attemptsValid / state.attemptsTotal) * 100) : 100,
+    bestWordThisRound,
+    longestWordThisRound,
+    ...wordRecords,
+  };
 
   if (state.duel) {
     state.duel.myScore = score;
@@ -574,12 +640,34 @@ function submitSelection() {
   const isValid = word.length >= 3 && state.trie.isWord(word);
   const isNew = isValid && !state.foundWords.has(word);
 
+  if (word.length >= 3) {
+    state.attemptsTotal++;
+    if (isValid) state.attemptsValid++;
+  }
+
   if (isNew) {
     const { points, type } = classifyWord(word);
-    state.foundWords.set(word, { points, type });
+    state.foundWords.set(word, { points, type, path: state.selection.slice() });
     state.score += points;
     state.lastFoundWord = word;
+
+    // Combo: se questa parola arriva entro COMBO_WINDOW_MS dall'ultima
+    // trovata, lo streak cresce; altrimenti riparte da 1. Da 2 in su
+    // scatta il feedback combo (audio + popup), per premiare chi trova
+    // parole in rapida successione senza esitare.
+    const now = Date.now();
+    state.comboCount = state.lastFoundAt && now - state.lastFoundAt <= COMBO_WINDOW_MS ? state.comboCount + 1 : 1;
+    state.lastFoundAt = now;
+
     audio.playFound(points);
+    if (type === "bonus") {
+      audio.playBonusSparkle();
+      spawnSparkleBurst(cellsEls);
+    }
+    if (state.comboCount >= 2) {
+      audio.playCombo(state.comboCount);
+      showComboPopup(state.comboCount);
+    }
     flashCells(cellsEls, type === "bonus" ? "bonus" : "correct");
     showScorePopup(cellsEls, points, type);
     updateFoundList();
@@ -651,6 +739,54 @@ function pulseScore() {
   el.classList.add("pulse");
 }
 
+// Effetto "speciale" per le parole bonus (x3): una manciata di stelline
+// che si irradiano dalle celle della parola in direzioni casuali e
+// sfumano mentre volano via. Accompagna audio.playBonusSparkle().
+function spawnSparkleBurst(cellsEls) {
+  const boardWrap = document.querySelector(".board-wrap");
+  if (!boardWrap || !cellsEls.length) return;
+  const wrapRect = boardWrap.getBoundingClientRect();
+
+  cellsEls.forEach((cellEl) => {
+    const r = cellEl.getBoundingClientRect();
+    const cx = r.left + r.width / 2 - wrapRect.left;
+    const cy = r.top + r.height / 2 - wrapRect.top;
+
+    const sparkleCount = 3;
+    for (let i = 0; i < sparkleCount; i++) {
+      const sparkle = document.createElement("span");
+      sparkle.className = "sparkle";
+      sparkle.textContent = "✦";
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 26 + Math.random() * 22;
+      sparkle.style.left = `${cx}px`;
+      sparkle.style.top = `${cy}px`;
+      sparkle.style.setProperty("--dx", `${Math.cos(angle) * distance}px`);
+      sparkle.style.setProperty("--dy", `${Math.sin(angle) * distance}px`);
+      sparkle.style.animationDelay = `${Math.random() * 0.12}s`;
+      boardWrap.appendChild(sparkle);
+      sparkle.addEventListener("animationend", () => sparkle.remove());
+      setTimeout(() => sparkle.remove(), 900);
+    }
+  });
+}
+
+// Popup "COMBO ×N" al centro sopra la griglia quando si trovano parole in
+// rapida successione (vedi COMBO_WINDOW_MS). Colore e dimensione crescono
+// con lo streak per dare un senso di escalation, fino a un tetto.
+function showComboPopup(level) {
+  const boardWrap = document.querySelector(".board-wrap");
+  if (!boardWrap) return;
+
+  const tier = Math.min(level - 1, 4); // 0..4, usato per la classe colore/dimensione
+  const popup = document.createElement("div");
+  popup.className = `combo-popup combo-tier-${tier}`;
+  popup.textContent = `COMBO ×${level}`;
+  boardWrap.appendChild(popup);
+  popup.addEventListener("animationend", () => popup.remove());
+  setTimeout(() => popup.remove(), 1000);
+}
+
 function wordBadge(type) {
   if (type === "bonus") return ` <span class="tag tag-bonus">×${BONUS_MULTIPLIER}</span>`;
   if (type === "extra") return ` <span class="tag tag-extra">extra</span>`;
@@ -672,10 +808,12 @@ function updateFoundList() {
 // ---------- Schermata risultati ----------
 
 function renderResults() {
-  const { category, allFindableWords, foundWords, score, roundRecord } = state;
+  const { category, allFindableWords, foundWords, score, roundRecord, roundStats } = state;
   const missed = [...allFindableWords.keys()]
     .filter((w) => !foundWords.has(w))
     .sort((a, b) => b.length - a.length);
+
+  const isCelebration = roundRecord?.isNew || roundStats?.isNewBest || roundStats?.isNewLongest;
 
   const recordLine = roundRecord?.isNew
     ? `<p class="results-record new">🏆 Nuovo record per ${category.label} (${DIFFICULTIES[state.difficulty].label})!</p>`
@@ -683,13 +821,17 @@ function renderResults() {
 
   app.innerHTML = `
     <div class="results">
-      <h1>Tempo scaduto!</h1>
-      <p class="results-category">${category.icon} ${category.label}</p>
-      <div class="results-score">${score} punti</div>
-      ${recordLine}
+      <h1 class="reveal" style="--i:0">Tempo scaduto!</h1>
+      <p class="results-category reveal" style="--i:1">${category.icon} ${category.label}</p>
+      <div class="results-score reveal${isCelebration ? " score-celebration" : ""}" style="--i:2"><span id="score-countup" data-target="${score}">0</span> punti</div>
+      <div class="reveal" style="--i:3">${recordLine}</div>
       ${renderDuelResultBanner()}
 
-      <div class="results-columns">
+      ${renderMiniGridSnapshot()}
+
+      ${renderRoundStatCards()}
+
+      <div class="results-columns reveal" style="--i:6">
         <div>
           <h2>Trovate (${foundWords.size})</h2>
           <ul class="results-list found">
@@ -709,7 +851,7 @@ function renderResults() {
         </div>
       </div>
 
-      <div class="results-actions">
+      <div class="results-actions reveal" style="--i:7">
         ${
           state.duel
             ? `<button id="duel-rematch">Rivincita (nuova sfida)</button>`
@@ -738,6 +880,150 @@ function renderResults() {
     state.screen = "category-select";
     render();
   });
+
+  animateResultsReveal();
+}
+
+// Piccola anteprima della griglia giocata con evidenziato il percorso della
+// parola migliore di questo round (o quella più lunga se non ce n'è una a
+// punteggio), in stile "cartolina" come il recap di fine partita di Ruzzle.
+function renderMiniGridSnapshot() {
+  const stats = state.roundStats;
+  const showcase = stats?.bestWordThisRound || stats?.longestWordThisRound;
+  if (!showcase || !showcase.path?.length) return "";
+
+  const highlighted = new Set(showcase.path.map(([r, c]) => `${r},${c}`));
+  const label = stats.bestWordThisRound
+    ? `${showcase.word} · +${stats.bestWordThisRound.points} punti`
+    : showcase.word;
+
+  const gridHtml = state.grid
+    .map((row, r) =>
+      row
+        .map((letter, c) => {
+          const isHi = highlighted.has(`${r},${c}`);
+          return `<div class="mini-cell${isHi ? " hi" : ""}">${letter}</div>`;
+        })
+        .join("")
+    )
+    .join("");
+
+  return `
+    <div class="mini-grid-card reveal" style="--i:4">
+      <div class="mini-grid" style="--size:${state.gridSize}">${gridHtml}</div>
+      <p class="mini-grid-label">${label}</p>
+    </div>`;
+}
+
+// Le tre "stat card" in stile recap Ruzzle: precisione (% di parole valide
+// sui tentativi), parola più lunga e parola migliore — queste ultime due
+// confrontate col record assoluto salvato in localStorage, con nastrino
+// "NUOVO RECORD" quando il round appena giocato lo ha battuto.
+function renderRoundStatCards() {
+  const stats = state.roundStats;
+  if (!stats) return "";
+
+  const { precision, longestWordThisRound, bestWordThisRound, isNewLongest, isNewBest, prevLongest, prevBest } = stats;
+
+  const longestLen = longestWordThisRound?.word.length || 0;
+  const longestRecordLen = Math.max(longestLen, prevLongest?.length || 0);
+  const longestPct = longestRecordLen > 0 ? Math.round((longestLen / longestRecordLen) * 100) : 0;
+
+  const bestPoints = bestWordThisRound?.points || 0;
+  const bestRecordPoints = Math.max(bestPoints, prevBest?.points || 0);
+  const bestPct = bestRecordPoints > 0 ? Math.round((bestPoints / bestRecordPoints) * 100) : 0;
+
+  return `
+    <div class="stat-grid reveal" style="--i:5">
+      <div class="stat-card">
+        <h3>Precisione</h3>
+        <div class="stat-bar-track"><div class="stat-bar-fill" data-target-pct="${precision}"></div></div>
+        <span class="stat-value" id="precision-countup" data-target="${precision}" data-suffix="%">0%</span>
+      </div>
+      <div class="stat-card">
+        <h3>Parole trovate</h3>
+        <div class="stat-bar-track"><div class="stat-bar-fill" data-target-pct="100"></div></div>
+        <span class="stat-value" id="words-countup" data-target="${state.foundWords.size}">0</span>
+      </div>
+      <div class="stat-card${isNewLongest ? " is-record" : ""}">
+        ${isNewLongest ? `<span class="record-ribbon">NUOVO<br>RECORD!</span>` : ""}
+        <h3>Parola più lunga</h3>
+        <div class="stat-bar-track"><div class="stat-bar-fill" data-target-pct="${longestPct}"></div></div>
+        <span class="stat-value">${longestWordThisRound ? `${longestLen} <small>(record ${longestRecordLen})</small>` : "—"}</span>
+      </div>
+      <div class="stat-card${isNewBest ? " is-record" : ""}">
+        ${isNewBest ? `<span class="record-ribbon">NUOVO<br>RECORD!</span>` : ""}
+        <h3>Parola migliore</h3>
+        <div class="stat-bar-track"><div class="stat-bar-fill" data-target-pct="${bestPct}"></div></div>
+        <span class="stat-value">${bestWordThisRound ? `${bestWordThisRound.word} <small>(${bestPoints}pt)</small>` : "—"}</span>
+      </div>
+    </div>`;
+}
+
+// Innesca le animazioni della schermata risultati dopo che l'HTML è già nel
+// DOM: le sezioni "reveal" partono in sequenza (via --i e CSS), le barre
+// stat si riempiono e i numeri chiave salgono da 0 al valore finale. Se il
+// round ha battuto un record (punteggio, parola più lunga o migliore),
+// aggiunge coriandoli dorati + una fanfara più ricca — il momento "speciale"
+// riservato ai risultati davvero degni di nota.
+function animateResultsReveal() {
+  requestAnimationFrame(() => {
+    document.querySelectorAll(".stat-bar-fill[data-target-pct]").forEach((el) => {
+      const pct = Number(el.dataset.targetPct) || 0;
+      requestAnimationFrame(() => {
+        el.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+      });
+    });
+  });
+
+  document.querySelectorAll("[data-target]").forEach((el) => {
+    const target = Number(el.dataset.target) || 0;
+    const suffix = el.dataset.suffix || "";
+    animateCountUp(el, target, suffix);
+  });
+
+  const stats = state.roundStats;
+  const isCelebration = state.roundRecord?.isNew || stats?.isNewBest || stats?.isNewLongest;
+  if (isCelebration) {
+    setTimeout(() => {
+      spawnConfetti();
+      audio.playRecordFanfare();
+    }, 300); // dopo il suono di fine round (playRoundEnd), per non sovrapporsi
+  }
+}
+
+function animateCountUp(el, target, suffix = "", duration = 700) {
+  const start = performance.now();
+  function tick(now) {
+    const progress = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+    el.textContent = `${Math.round(target * eased)}${suffix}`;
+    if (progress < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+// Pioggia di coriandoli dorati/corallo/teal dall'alto della schermata
+// risultati, per i momenti di nuovo record. Puro CSS (una manciata di span
+// posizionati e animati), niente canvas: leggero e sufficiente per un
+// tocco di festa senza appesantire la pagina.
+function spawnConfetti() {
+  const colors = ["var(--gold)", "var(--coral)", "var(--teal)", "var(--parchment)"];
+  const pieceCount = 36;
+
+  for (let i = 0; i < pieceCount; i++) {
+    const piece = document.createElement("span");
+    piece.className = "confetti-piece";
+    piece.style.left = `${Math.random() * 100}vw`;
+    piece.style.background = colors[i % colors.length];
+    piece.style.setProperty("--fall-duration", `${1.6 + Math.random() * 1.2}s`);
+    piece.style.setProperty("--drift", `${(Math.random() - 0.5) * 140}px`);
+    piece.style.setProperty("--spin", `${360 * (Math.random() > 0.5 ? 1 : -1) * (1 + Math.random())}deg`);
+    piece.style.animationDelay = `${Math.random() * 0.4}s`;
+    document.body.appendChild(piece);
+    piece.addEventListener("animationend", () => piece.remove());
+    setTimeout(() => piece.remove(), 3200);
+  }
 }
 
 // Se il round appena concluso era una sfida multiplayer, mostra un
@@ -1176,4 +1462,42 @@ function checkDuelInviteLink() {
 
 checkDuelInviteLink();
 loadAdsenseScriptOnce();
-render();
+showSplashIntro(() => render());
+
+// ---------- Splash iniziale animato ----------
+//
+// Overlay a schermo intero mostrato ad ogni avvio (come il logo animato di
+// Ruzzle): le lettere-tile di "SCONTRO" entrano in scena una dopo l'altra
+// con un piccolo rimbalzo, poi il sottotitolo sfuma dentro. Si chiude da
+// solo dopo ~1.4s o subito se l'utente tocca lo schermo. Il vero contenuto
+// (#app) resta invariato sotto e viene renderizzato solo a splash chiuso,
+// così non c'è nessun flash del contenuto reale prima dell'animazione.
+function showSplashIntro(onDone) {
+  const letters = "SCONTRO".split("");
+  const overlay = document.createElement("div");
+  overlay.className = "splash-overlay";
+  overlay.innerHTML = `
+    <div class="splash-tiles">
+      ${letters
+        .map((l, i) => `<span class="splash-tile" style="--i:${i}">${l}</span>`)
+        .join("")}
+    </div>
+    <p class="splash-tagline">delle Ultime Parole</p>
+    <p class="splash-hint">tocca per iniziare</p>
+  `;
+  document.body.appendChild(overlay);
+
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    overlay.classList.add("splash-out");
+    overlay.addEventListener("animationend", () => overlay.remove(), { once: true });
+    // Fallback nel caso animationend non scatti (tab in background, ecc.)
+    setTimeout(() => overlay.remove(), 500);
+    onDone();
+  };
+
+  overlay.addEventListener("click", finish);
+  setTimeout(finish, 1600);
+}
