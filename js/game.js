@@ -227,15 +227,23 @@ function render() {
 }
 
 // Durante la partita e nella schermata risultati, lo sfondo della pagina
-// diventa la foto a tema della categoria in corso (vedi img/backgrounds/ e
-// .category-card::before/body.has-bg-photo in style.css) invece del
-// gradiente scuro generico. Altrove (home, sfida, ecc.) resta il gradiente.
+// diventa la foto a tema della categoria in corso invece del gradiente
+// scuro generico. L'URL viene impostato per intero qui via JS (non tramite
+// variabile CSS referenziata da style.css) perché un url() dentro una CSS
+// custom property si risolve rispetto al foglio di stile che la referenzia
+// (css/style.css), non rispetto alla pagina — con un percorso relativo
+// come "img/backgrounds/..." questo cercherebbe (sbagliando) dentro
+// "css/img/backgrounds/...". Impostandolo come inline style sull'elemento,
+// invece, si risolve correttamente rispetto all'URL della pagina, esattamente
+// come già succede per le foto sulle category-card.
 function updateScreenBackground() {
   const showPhoto = (state.screen === "playing" || state.screen === "results") && state.category;
   if (showPhoto) {
-    document.body.style.setProperty("--bg-photo", `url('${CATEGORY_BG_BASE}${state.category.id}.jpg')`);
+    const url = `${CATEGORY_BG_BASE}${state.category.id}.jpg`;
+    document.body.style.backgroundImage = `linear-gradient(180deg, rgba(23,15,28,0.5) 0%, rgba(23,15,28,0.82) 45%, var(--ink-deep) 100%), url('${url}')`;
     document.body.classList.add("has-bg-photo");
   } else {
+    document.body.style.backgroundImage = "";
     document.body.classList.remove("has-bg-photo");
   }
 }
